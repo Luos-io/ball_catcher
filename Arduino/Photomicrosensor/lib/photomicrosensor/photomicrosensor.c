@@ -101,3 +101,30 @@ static void PhotoSensor_MsgHandler2(service_t *service, msg_t *msg)
         return;
     }
 }
+/******************************************************************************
+ * @brief Msg Handler call back when a msg receive for this service
+ * @param Service destination
+ * @param Msg receive
+ * @return None
+ ******************************************************************************/
+static void PhotoSensor_MsgHandler3(service_t *service, msg_t *msg)
+{
+    if (msg->header.cmd == GET_CMD)
+    {
+        uint8_t value = (bool)digitalRead(PHOTOIN_PIN3);
+        Timestamp_Tag(&time1, &value);
+        //  fill the message infos
+        msg_t pub_msg;
+        pub_msg.header.cmd         = IO_STATE;
+        pub_msg.header.target_mode = ID;
+        pub_msg.header.target      = msg->header.source;
+        pub_msg.header.size        = sizeof(uint8_t);
+        pub_msg.data[0]            = value;
+        if (Timestamp_GetToken(&value))
+        {
+            Timestamp_EncodeMsg(&pub_msg, &value);
+        }
+        Luos_SendTimestampMsg(service, &pub_msg);
+        return;
+    }
+}
