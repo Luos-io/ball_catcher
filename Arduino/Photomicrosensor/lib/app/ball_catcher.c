@@ -11,12 +11,12 @@
 /*******************************************************************************
  * Definitions
  *****************************************************************************/
-#define DIST   0.20
-#define HEIGHT 0.55
+#define DATE 58
 
 typedef enum
 {
     SOLENOID_ACTIVATE,
+    SOLENOID_DEACTIVATE,
     GOAL,
     FAIL_CHECK,
     WAITING,
@@ -29,19 +29,18 @@ service_t *app;
 search_result_t solenoid;
 search_result_t sensor;
 search_result_t lcd;
+uint8_t power_on  = 1;
+uint8_t power_off = 0;
+timestamp_token_t token1;
+timestamp_token_t token2;
 
 uint64_t wait_timer = 0;
-// uint64_t velocity   = 0;
-uint8_t state = IDLE;
+uint8_t state       = IDLE;
 /*******************************************************************************
  * Function
  ******************************************************************************/
 static void BallCatcher_MsgHandler(service_t *service, msg_t *msg);
 
-/* Not yet in use
-uint64_t velocity_calc(uint64_t dist, uint64_t time);
-int64_t delay_calc(uint64_t dist, uint64_t vel);
-*/
 /******************************************************************************
  * @brief init must be call in project init
  * @param None
@@ -61,16 +60,14 @@ void BallCatcher_Init(void)
  ******************************************************************************/
 void BallCatcher_Loop(void)
 {
+    static uint64_t date = 0;
     if (Luos_IsNodeDetected())
     {
         switch (state)
         {
             case (SOLENOID_ACTIVATE):
             {
-                // uint64_t date = delay_calc(HEIGHT, velocity);
-                uint64_t date    = 50 * 1000000;
-                uint8_t power_on = 1;
-                timestamp_token_t token1;
+                date = DATE * 1000000;
 
                 Timestamp_CreateEvent(date, &token1, &power_on);
                 if (solenoid.result_nbr > 0)
@@ -85,30 +82,38 @@ void BallCatcher_Loop(void)
                     {
                         Timestamp_EncodeMsg(&msg, &power_on);
                     }
-                    Luos_SendTimestampMsg(app, &msg);
+                    while (Luos_SendTimestampMsg(app, &msg) != SUCCEED)
+                        ;
                 }
-
-                date     = 550 * 1000000;
-                power_on = 0;
-                timestamp_token_t token2;
-
-                Timestamp_CreateEvent(date, &token2, &power_on);
-                if (solenoid.result_nbr > 0)
-                {
-                    msg_t msg;
-                    msg.header.target      = solenoid.result_table[0]->id;
-                    msg.header.target_mode = IDACK;
-                    msg.header.cmd         = IO_STATE;
-                    msg.header.size        = 1;
-                    msg.data[0]            = 0;
-                    if (Timestamp_GetToken(&power_on))
-                    {
-                        Timestamp_EncodeMsg(&msg, &power_on);
-                    }
-                    Luos_SendTimestampMsg(app, &msg);
-                }
+                state      = SOLENOID_DEACTIVATE;
                 wait_timer = Luos_GetSystick();
-                state      = FAIL_CHECK;
+                break;
+            }
+            case (SOLENOID_DEACTIVATE):
+            {
+                if (Luos_GetSystick() >= wait_timer + DATE)
+                {
+                    date = 500 * 1000000;
+
+                    Timestamp_CreateEvent(date, &token2, &power_off);
+                    if (solenoid.result_nbr > 0)
+                    {
+                        msg_t msg;
+                        msg.header.target      = solenoid.result_table[0]->id;
+                        msg.header.target_mode = IDACK;
+                        msg.header.cmd         = IO_STATE;
+                        msg.header.size        = 1;
+                        msg.data[0]            = 0;
+                        if (Timestamp_GetToken(&power_off))
+                        {
+                            Timestamp_EncodeMsg(&msg, &power_off);
+                        }
+                        while (Luos_SendTimestampMsg(app, &msg) != SUCCEED)
+                            ;
+                    }
+                    wait_timer = Luos_GetSystick();
+                    state      = FAIL_CHECK;
+                }
                 break;
             }
             case (GOAL):
@@ -144,6 +149,7 @@ void BallCatcher_Loop(void)
                         state      = WAITING;
                     }
                 }
+                break;
             }
             case (WAITING):
             {
@@ -162,6 +168,7 @@ void BallCatcher_Loop(void)
                     }
                     state = IDLE;
                 }
+                break;
             }
             default:
                 break;
@@ -182,9 +189,7 @@ static void BallCatcher_MsgHandler(service_t *service, msg_t *msg)
 {
     static uint8_t sensor_state1 = 0;
     static uint8_t sensor_state2 = 0;
-    static uint8_t sensor_state3 = 0;
-    static int64_t timestamp1    = 0;
-    static int64_t timestamp2    = 0;
+    static int64_t timestamp     = 0;
 
     if (msg->header.cmd == IO_STATE)
     {
@@ -196,24 +201,12 @@ static void BallCatcher_MsgHandler(service_t *service, msg_t *msg)
             {
                 if (Timestamp_IsTimestampMsg(msg) == true)
                 {
-                    Timestamp_DecodeMsg(msg, &timestamp1);
+                    Timestamp_DecodeMsg(msg, &timestamp);
                 }
+                wait_timer = Luos_GetSystick();
+                state      = SOLENOID_ACTIVATE;
             }
             sensor_state1 = msg->data[0];
-        }
-        else if (strstr(result.result_table[0]->alias, "sensor3") != 0)
-        {
-            if ((sensor_state3 == 0) && (msg->data[0] != sensor_state3))
-            {
-                if (Timestamp_IsTimestampMsg(msg) == true)
-                {
-                    Timestamp_DecodeMsg(msg, &timestamp2);
-                }
-                // uint64_t delay = timestamp2 - timestamp1;
-                // velocity       = velocity_calc(DIST, delay);
-                state = SOLENOID_ACTIVATE;
-            }
-            sensor_state3 = msg->data[0];
         }
         else
         {
@@ -258,21 +251,3 @@ static void BallCatcher_MsgHandler(service_t *service, msg_t *msg)
         }
     }
 }
-/* NOT YET IN USE
-uint64_t velocity_calc(uint64_t dist, uint64_t time)
-{
-    return ((float)((dist - 10 * (time ^ 3)) / (time + (float)((time ^ 2) / 2))) + 10 * time);
-}
-
-int64_t delay_calc(uint64_t dist, uint64_t vel)
-{
-    for (uint64_t i = 1; i < 100000; i++)
-    {
-        if (((10 * (i ^ 3) + (velocity * (i ^ 2)) + velocity * i - dist) > 0) && ((10 * (i ^ 3) + (velocity * (i ^ 2)) + velocity * i - dist) < 1))
-        {
-            return i;
-        }
-    }
-    return 0;
-}
-*/
