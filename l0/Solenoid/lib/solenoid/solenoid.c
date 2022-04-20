@@ -14,9 +14,8 @@
 /*******************************************************************************
  * Variables
  ******************************************************************************/
-uint8_t val = 0;
-int64_t timestamp;
-int64_t timer = 0;
+uint8_t val       = 0;
+time_luos_t timer = 0;
 service_t *solenoid;
 /*******************************************************************************
  * Function
@@ -42,7 +41,7 @@ void Solenoid_Loop(void)
 {
     if (Luos_IsNodeDetected())
     {
-        if (Luos_GetSystick() >= timer)
+        if (Timestamp_now() >= timer)
         {
             solenoid_drv_write((bool)val);
         }
@@ -58,8 +57,7 @@ static void Solenoid_MsgHandler(service_t *service, msg_t *msg)
 {
     if (Timestamp_IsTimestampMsg(msg) == true)
     {
-        Timestamp_DecodeMsg(msg, &timestamp);
-        timer = timestamp / 1000000;
+        timer = Timestamp_GetTimestamp(msg);
     }
     else
     {
@@ -67,6 +65,6 @@ static void Solenoid_MsgHandler(service_t *service, msg_t *msg)
     }
     if (msg->header.cmd == IO_STATE)
     {
-        val = msg->data;
+        val = msg->data[0];
     }
 }
