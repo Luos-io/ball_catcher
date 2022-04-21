@@ -46,7 +46,9 @@ void BallCatcher_Init(void)
 {
     revision_t revision = {.major = 1, .minor = 0, .build = 0};
     app                 = Luos_CreateService(BallCatcher_MsgHandler, LUOS_LAST_TYPE, "app", revision);
-    // delay to setup all the systems components
+    // delay to setup all the systems components - primarly the lcd driver that takes some ms
+    while (Luos_GetSystick() < 80)
+        ;
     Luos_Detect(app);
 }
 /******************************************************************************
