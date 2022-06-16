@@ -29,10 +29,6 @@ service_t *app;
 search_result_t solenoid;
 search_result_t sensor;
 search_result_t lcd;
-uint8_t power_on  = 1;
-uint8_t power_off = 0;
-timestamp_token_t token1;
-timestamp_token_t token2;
 
 uint64_t wait_timer = 0;
 uint8_t state       = IDLE;
@@ -50,7 +46,9 @@ void BallCatcher_Init(void)
 {
     revision_t revision = {.major = 1, .minor = 0, .build = 0};
     app                 = Luos_CreateService(BallCatcher_MsgHandler, LUOS_LAST_TYPE, "app", revision);
-    // delay to setup all the systems components
+    // delay to setup all the systems components - primarly the lcd driver that takes some ms
+    while (Luos_GetSystick() < 80)
+        ;
     Luos_Detect(app);
 }
 /******************************************************************************
@@ -60,16 +58,16 @@ void BallCatcher_Init(void)
  ******************************************************************************/
 void BallCatcher_Loop(void)
 {
-    static uint64_t date = 0;
+    time_luos_t date = 0;
     if (Luos_IsNodeDetected())
     {
         switch (state)
         {
             case (SOLENOID_ACTIVATE):
             {
-                date = DATE * 1000000;
 
-                Timestamp_CreateEvent(date, &token1, &power_on);
+                date = Timestamp_now() + TimeOD_TimeFrom_ms(DATE);
+                // date = Timestamp_now();
                 if (solenoid.result_nbr > 0)
                 {
                     msg_t msg;
@@ -78,11 +76,7 @@ void BallCatcher_Loop(void)
                     msg.header.cmd         = IO_STATE;
                     msg.header.size        = 1;
                     msg.data[0]            = 1;
-                    if (Timestamp_GetToken(&power_on))
-                    {
-                        Timestamp_EncodeMsg(&msg, &power_on);
-                    }
-                    while (Luos_SendTimestampMsg(app, &msg) != SUCCEED)
+                    while (Luos_SendTimestampMsg(app, &msg, date) != SUCCEED)
                         ;
                 }
                 state      = SOLENOID_DEACTIVATE;
@@ -91,11 +85,9 @@ void BallCatcher_Loop(void)
             }
             case (SOLENOID_DEACTIVATE):
             {
-                if (Luos_GetSystick() >= wait_timer + DATE)
+                if (Luos_GetSystick() >= wait_timer + 60)
                 {
-                    date = 500 * 1000000;
-
-                    Timestamp_CreateEvent(date, &token2, &power_off);
+                    date = Timestamp_now() + TimeOD_TimeFrom_ms(500);
                     if (solenoid.result_nbr > 0)
                     {
                         msg_t msg;
@@ -104,11 +96,7 @@ void BallCatcher_Loop(void)
                         msg.header.cmd         = IO_STATE;
                         msg.header.size        = 1;
                         msg.data[0]            = 0;
-                        if (Timestamp_GetToken(&power_off))
-                        {
-                            Timestamp_EncodeMsg(&msg, &power_off);
-                        }
-                        while (Luos_SendTimestampMsg(app, &msg) != SUCCEED)
+                        while (Luos_SendTimestampMsg(app, &msg, date) != SUCCEED)
                             ;
                     }
                     wait_timer = Luos_GetSystick();
@@ -189,7 +177,6 @@ static void BallCatcher_MsgHandler(service_t *service, msg_t *msg)
 {
     static uint8_t sensor_state1 = 0;
     static uint8_t sensor_state2 = 0;
-    static int64_t timestamp     = 0;
 
     if (msg->header.cmd == IO_STATE)
     {
@@ -199,10 +186,6 @@ static void BallCatcher_MsgHandler(service_t *service, msg_t *msg)
         {
             if ((sensor_state1 == 0) && (msg->data[0] != sensor_state1))
             {
-                if (Timestamp_IsTimestampMsg(msg) == true)
-                {
-                    Timestamp_DecodeMsg(msg, &timestamp);
-                }
                 wait_timer = Luos_GetSystick();
                 state      = SOLENOID_ACTIVATE;
             }

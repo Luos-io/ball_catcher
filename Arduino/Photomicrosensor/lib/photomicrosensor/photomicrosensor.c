@@ -15,7 +15,6 @@
 /*******************************************************************************
  * Variables
  ******************************************************************************/
-timestamp_token_t time1;
 /*******************************************************************************
  * Function
  ******************************************************************************/
@@ -55,10 +54,12 @@ void PhotoSensor_Loop(void)
  ******************************************************************************/
 static void PhotoSensor_MsgHandler1(service_t *service, msg_t *msg)
 {
+    time_luos_t timestamp = 0;
     if (msg->header.cmd == GET_CMD)
     {
         uint8_t value = (bool)digitalRead(PHOTOIN_PIN1);
-        Timestamp_Tag(&time1, &value);
+
+        timestamp = Timestamp_now();
         //  fill the message infos
         msg_t pub_msg;
         pub_msg.header.cmd         = IO_STATE;
@@ -66,11 +67,7 @@ static void PhotoSensor_MsgHandler1(service_t *service, msg_t *msg)
         pub_msg.header.target      = msg->header.source;
         pub_msg.header.size        = sizeof(uint8_t);
         pub_msg.data[0]            = value;
-        if (Timestamp_GetToken(&value))
-        {
-            Timestamp_EncodeMsg(&pub_msg, &value);
-        }
-        Luos_SendTimestampMsg(service, &pub_msg);
+        Luos_SendTimestampMsg(service, &pub_msg, timestamp);
         return;
     }
 }
